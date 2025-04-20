@@ -1,0 +1,543 @@
+import React, { useState, useEffect } from 'react';
+import { FileTextIcon, DownloadIcon, CalendarIcon, ClockIcon, ChevronDownIcon, Loader2Icon, TrashIcon, EyeIcon } from 'lucide-react';
+import { generateReport, getSavedReports, downloadReport, deleteReport, Report, ReportTimeFrame, ReportFormat } from '../services/reportService';
+import ReportViewer from '../components/reports/ReportViewer';
+// Types are now imported from reportService
+const Reports: React.FC<{
+  userRole: 'admin' | 'user' | null;
+}> = ({
+  userRole
+}) => {
+  const [reportName, setReportName] = useState<string>('System Performance Report');
+  const [selectedTimeFrame, setSelectedTimeFrame] = useState<ReportTimeFrame>('1d');
+  const [selectedFormat, setSelectedFormat] = useState<ReportFormat>('pdf');
+  const [isTimeFrameOpen, setIsTimeFrameOpen] = useState(false);
+  const [isFormatOpen, setIsFormatOpen] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [previousReports, setPreviousReports] = useState<Report[]>([]);
+  const [includeAllSystems, setIncludeAllSystems] = useState(false);
+  const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+  const [scheduleEmail, setScheduleEmail] = useState<string>('');
+  const [scheduleFrequency, setScheduleFrequency] = useState<string>('daily');
+  const [scheduleTime, setScheduleTime] = useState<string>('08:00');
+  const [isScheduling, setIsScheduling] = useState<boolean>(false);
+  const [scheduledReports, setScheduledReports] = useState<any[]>([]);
+
+  // Load saved reports and scheduled reports on component mount
+  useEffect(() => {
+    const loadReports = () => {
+      const savedReports = getSavedReports();
+      setPreviousReports(savedReports);
+
+      // Load scheduled reports from localStorage
+      const savedScheduledReports = localStorage.getItem('sysauraft_scheduled_reports');
+      if (savedScheduledReports) {
+        try {
+          setScheduledReports(JSON.parse(savedScheduledReports));
+        } catch (error) {
+          console.error('Error loading scheduled reports:', error);
+        }
+      }
+    };
+
+    loadReports();
+  }, []);
+
+  // Example of previous reports structure
+  /* const previousReports = [{
+    id: 1,
+    name: 'Daily System Report',
+    timeFrame: '1d',
+    createdAt: '2023-05-15T09:00:00Z',
+    format: 'pdf',
+    size: '2.4 MB'
+  }, {
+    id: 2,
+    name: 'Weekly Performance Report',
+    timeFrame: '1w',
+    createdAt: '2023-05-14T10:30:00Z',
+    format: 'pdf',
+    size: '5.1 MB'
+  }, {
+    id: 3,
+    name: 'Monthly System Overview',
+    timeFrame: '1m',
+    createdAt: '2023-05-01T08:15:00Z',
+    format: 'pdf',
+    size: '8.7 MB'
+  }, {
+    id: 4,
+    name: 'Critical Events Log',
+    timeFrame: '12h',
+    createdAt: '2023-05-14T18:45:00Z',
+    format: 'txt',
+    size: '1.2 MB'
+  }]; */
+  const timeFrameOptions: {
+    value: ReportTimeFrame;
+    label: string;
+  }[] = [{
+    value: '1h',
+    label: 'Last Hour'
+  }, {
+    value: '4h',
+    label: 'Last 4 Hours'
+  }, {
+    value: '12h',
+    label: 'Last 12 Hours'
+  }, {
+    value: '1d',
+    label: 'Last 24 Hours'
+  }, {
+    value: '1w',
+    label: 'Last Week'
+  }, {
+    value: '1m',
+    label: 'Last Month'
+  }];
+  const formatOptions: {
+    value: ReportFormat;
+    label: string;
+  }[] = [{
+    value: 'pdf',
+    label: 'PDF Document'
+  }, {
+    value: 'txt',
+    label: 'Plain Text'
+  }];
+  const getTimeFrameLabel = (value: ReportTimeFrame) => {
+    return timeFrameOptions.find(option => option.value === value)?.label || '';
+  };
+  const getFormatLabel = (value: ReportFormat) => {
+    return formatOptions.find(option => option.value === value)?.label || '';
+  };
+  const getFormattedDate = (date: Date) => {
+    return date.toLocaleString();
+  };
+  const handleGenerateReport = async () => {
+    if (!reportName.trim()) {
+      alert('Please enter a report name');
+      return;
+    }
+
+    setIsGenerating(true);
+
+    try {
+      // Generate the report
+      const report = await generateReport(
+        reportName,
+        selectedTimeFrame,
+        selectedFormat
+      );
+
+      // Update the list of reports
+      setPreviousReports([report, ...previousReports]);
+
+      // Show success message
+      alert(`Report "${reportName}" generated successfully!`);
+    } catch (error) {
+      console.error('Error generating report:', error);
+      alert('Error generating report. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // Handle report download
+  const handleDownloadReport = (report: Report) => {
+    downloadReport(report);
+  };
+
+  // Handle report deletion
+  const handleDeleteReport = (reportId: string) => {
+    deleteReport(reportId);
+    setPreviousReports(previousReports.filter(report => report.id !== reportId));
+  };
+
+  // Handle scheduling a report
+  const handleScheduleReport = () => {
+    // Validate email
+    if (!scheduleEmail.trim()) {
+      alert('Please enter at least one email address');
+      return;
+    }
+
+    // Simple email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const emails = scheduleEmail.split(',').map(email => email.trim());
+    const invalidEmails = emails.filter(email => !emailRegex.test(email));
+
+    if (invalidEmails.length > 0) {
+      alert(`Invalid email address(es): ${invalidEmails.join(', ')}`);
+      return;
+    }
+
+    setIsScheduling(true);
+
+    try {
+      // Create a scheduled report object
+      const scheduledReport = {
+        id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
+        name: reportName,
+        timeFrame: selectedTimeFrame,
+        format: selectedFormat,
+        emails,
+        frequency: scheduleFrequency,
+        time: scheduleTime,
+        createdAt: new Date(),
+        nextRun: calculateNextRun(scheduleFrequency, scheduleTime)
+      };
+
+      // Add to scheduled reports
+      const updatedScheduledReports = [scheduledReport, ...scheduledReports];
+      setScheduledReports(updatedScheduledReports);
+
+      // Save to localStorage
+      localStorage.setItem('sysauraft_scheduled_reports', JSON.stringify(updatedScheduledReports));
+
+      // Show success message
+      alert(`Report "${reportName}" scheduled successfully!\nNext run: ${scheduledReport.nextRun.toLocaleString()}`);
+
+      // Reset form
+      setScheduleEmail('');
+    } catch (error) {
+      console.error('Error scheduling report:', error);
+      alert('Error scheduling report. Please try again.');
+    } finally {
+      setIsScheduling(false);
+    }
+  };
+
+  // Calculate the next run time based on frequency and time
+  const calculateNextRun = (frequency: string, time: string): Date => {
+    const [hours, minutes] = time.split(':').map(Number);
+    const now = new Date();
+    const nextRun = new Date();
+
+    // Set the time
+    nextRun.setHours(hours, minutes, 0, 0);
+
+    // If the time is in the past, move to the next occurrence
+    if (nextRun <= now) {
+      if (frequency === 'daily') {
+        nextRun.setDate(nextRun.getDate() + 1);
+      } else if (frequency === 'weekly') {
+        nextRun.setDate(nextRun.getDate() + 7);
+      } else if (frequency === 'monthly') {
+        nextRun.setMonth(nextRun.getMonth() + 1);
+      }
+    }
+
+    return nextRun;
+  };
+  return <div className="h-full">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+          Reports
+        </h1>
+        <p className="text-gray-500 dark:text-gray-400 text-sm">
+          Generate and view system reports
+        </p>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="md:col-span-2">
+          <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+              Generate New Report
+            </h2>
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="reportName" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Report Name
+                </label>
+                <input
+                  type="text"
+                  id="reportName"
+                  value={reportName}
+                  onChange={(e) => setReportName(e.target.value)}
+                  className="block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                  placeholder="System Performance Report"
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="relative">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Time Frame
+                  </label>
+                  <button type="button" onClick={() => setIsTimeFrameOpen(!isTimeFrameOpen)} className="bg-white dark:bg-gray-700 relative w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 text-left focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500">
+                    <span className="flex items-center">
+                      <ClockIcon className="h-5 w-5 text-gray-400 mr-2" />
+                      <span className="block truncate text-gray-700 dark:text-gray-300">
+                        {getTimeFrameLabel(selectedTimeFrame)}
+                      </span>
+                    </span>
+                    <span className="absolute inset-y-0 right-0 flex items-center pr-2">
+                      <ChevronDownIcon className="h-5 w-5 text-gray-400" />
+                    </span>
+                  </button>
+                  {isTimeFrameOpen && <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg rounded-md py-1 max-h-60 ring-1 ring-black ring-opacity-5 overflow-auto">
+                      {timeFrameOptions.map(option => <button key={option.value} onClick={() => {
+                    setSelectedTimeFrame(option.value);
+                    setIsTimeFrameOpen(false);
+                  }} className={`${selectedTimeFrame === option.value ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-900 dark:text-indigo-300' : 'text-gray-900 dark:text-gray-300'} cursor-pointer select-none relative py-2 pl-3 pr-9 w-full text-left hover:bg-gray-100 dark:hover:bg-gray-700`}>
+                          <span className="block truncate">{option.label}</span>
+                        </button>)}
+                    </div>}
+                </div>
+                <div className="relative">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Format
+                  </label>
+                  <button type="button" onClick={() => setIsFormatOpen(!isFormatOpen)} className="bg-white dark:bg-gray-700 relative w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 text-left focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500">
+                    <span className="flex items-center">
+                      <FileTextIcon className="h-5 w-5 text-gray-400 mr-2" />
+                      <span className="block truncate text-gray-700 dark:text-gray-300">
+                        {getFormatLabel(selectedFormat)}
+                      </span>
+                    </span>
+                    <span className="absolute inset-y-0 right-0 flex items-center pr-2">
+                      <ChevronDownIcon className="h-5 w-5 text-gray-400" />
+                    </span>
+                  </button>
+                  {isFormatOpen && <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg rounded-md py-1 ring-1 ring-black ring-opacity-5 overflow-auto">
+                      {formatOptions.map(option => <button key={option.value} onClick={() => {
+                    setSelectedFormat(option.value);
+                    setIsFormatOpen(false);
+                  }} className={`${selectedFormat === option.value ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-900 dark:text-indigo-300' : 'text-gray-900 dark:text-gray-300'} cursor-pointer select-none relative py-2 pl-3 pr-9 w-full text-left hover:bg-gray-100 dark:hover:bg-gray-700`}>
+                          <span className="block truncate">{option.label}</span>
+                        </button>)}
+                    </div>}
+                </div>
+              </div>
+              {userRole === 'admin' && <div>
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={includeAllSystems}
+                      onChange={(e) => setIncludeAllSystems(e.target.checked)}
+                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                    />
+                    <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                      Include all connected systems
+                    </span>
+                  </label>
+                </div>}
+              <div>
+                <button
+                  onClick={handleGenerateReport}
+                  disabled={isGenerating}
+                  className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2Icon className="h-5 w-5 mr-2 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    'Generate Report'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+          {userRole === 'admin' && <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6 mt-6">
+              <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                Schedule Reports
+              </h2>
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="scheduleEmail" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Email Recipients
+                  </label>
+                  <input
+                    type="text"
+                    id="scheduleEmail"
+                    value={scheduleEmail}
+                    onChange={(e) => setScheduleEmail(e.target.value)}
+                    className="block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                    placeholder="admin@example.com, manager@example.com"
+                  />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="scheduleFrequency" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Frequency
+                    </label>
+                    <select
+                      id="scheduleFrequency"
+                      value={scheduleFrequency}
+                      onChange={(e) => setScheduleFrequency(e.target.value)}
+                      className="block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                    >
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="scheduleTime" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Time
+                    </label>
+                    <input
+                      type="time"
+                      id="scheduleTime"
+                      value={scheduleTime}
+                      onChange={(e) => setScheduleTime(e.target.value)}
+                      className="block w-full border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <button
+                    onClick={handleScheduleReport}
+                    disabled={isScheduling}
+                    className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isScheduling ? (
+                      <>
+                        <Loader2Icon className="h-5 w-5 mr-2 animate-spin" />
+                        Scheduling...
+                      </>
+                    ) : (
+                      'Schedule Report'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Display scheduled reports */}
+            {scheduledReports.length > 0 && (
+              <div className="mt-6">
+                <h3 className="text-md font-medium text-gray-900 dark:text-white mb-3">
+                  Scheduled Reports
+                </h3>
+                <div className="space-y-3">
+                  {scheduledReports.map((scheduledReport) => (
+                    <div key={scheduledReport.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-750">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-900 dark:text-white">
+                            {scheduledReport.name}
+                          </h4>
+                          <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 space-y-1">
+                            <div>
+                              {scheduledReport.frequency.charAt(0).toUpperCase() + scheduledReport.frequency.slice(1)} at {scheduledReport.time}
+                            </div>
+                            <div>
+                              Next run: {typeof scheduledReport.nextRun === 'string'
+                                ? new Date(scheduledReport.nextRun).toLocaleString()
+                                : scheduledReport.nextRun.toLocaleString()}
+                            </div>
+                            <div>
+                              Format: {scheduledReport.format.toUpperCase()}, Time frame: {getTimeFrameLabel(scheduledReport.timeFrame)}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            // Remove from scheduled reports
+                            const updatedScheduledReports = scheduledReports.filter(r => r.id !== scheduledReport.id);
+                            setScheduledReports(updatedScheduledReports);
+                            localStorage.setItem('sysauraft_scheduled_reports', JSON.stringify(updatedScheduledReports));
+                          }}
+                          className="text-red-600 dark:text-red-400 hover:text-red-500 dark:hover:text-red-300"
+                          title="Cancel Schedule"
+                        >
+                          <TrashIcon className="h-5 w-5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        <div>
+          <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6 h-full">
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+              Previous Reports
+            </h2>
+            <div className="space-y-4">
+              {previousReports.length === 0 ? (
+                <p className="text-gray-500 dark:text-gray-400 text-center py-4">
+                  No previous reports found
+                </p>
+              ) : (
+                previousReports.map(report => (
+                  <div
+                    key={report.id}
+                    className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow"
+                    onClick={() => setSelectedReport(report)}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-900 dark:text-white">
+                          {report.name}
+                        </h3>
+                        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 space-y-1">
+                          <div className="flex items-center">
+                            <CalendarIcon className="h-3 w-3 mr-1" />
+                            {getFormattedDate(report.createdAt)}
+                          </div>
+                          <div className="flex items-center">
+                            <ClockIcon className="h-3 w-3 mr-1" />
+                            {getTimeFrameLabel(report.timeFrame)}
+                          </div>
+                          <div>
+                            {report.format.toUpperCase()} • {report.size}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedReport(report);
+                          }}
+                          className="text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300"
+                          title="View Report"
+                        >
+                          <EyeIcon className="h-5 w-5" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownloadReport(report);
+                          }}
+                          className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300"
+                          title="Download Report"
+                        >
+                          <DownloadIcon className="h-5 w-5" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteReport(report.id);
+                          }}
+                          className="text-red-600 dark:text-red-400 hover:text-red-500 dark:hover:text-red-300"
+                          title="Delete Report"
+                        >
+                          <TrashIcon className="h-5 w-5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Report Viewer Modal */}
+      {selectedReport && (
+        <ReportViewer
+          report={selectedReport}
+          onClose={() => setSelectedReport(null)}
+        />
+      )}
+    </div>;
+};
+export default Reports;

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en" class="light">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SysAura - System Monitoring</title>
+    <script>
+      // On page load, check if user has a theme preference in localStorage
+      const savedTheme = localStorage.getItem('theme');
+      // Check if user prefers dark mode
+      const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+      // Set initial theme based on saved preference or system preference
+      const initialTheme = savedTheme || (prefersDark ? 'dark' : 'light');
+
+      // Apply the theme to document
+      document.documentElement.classList.remove('light', 'dark');
+      document.documentElement.classList.add(initialTheme);
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/index.tsx"></script>
+  </body>
+</html>
