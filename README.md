@@ -2,6 +2,9 @@
 
 SysAura is a real-time system and server(still working on server) monitoring application that provides detailed insights into CPU, memory, disk, and network usage. It features a modern React frontend and a robust Node.js backend with WebSocket support for real-time updates.
 
+## How it works? 
+https://drive.google.com/drive/folders/1QqdzelWDzui8TduurK6YV7NphFt5Wn7U
+
 ## Features
 
 - Real-time monitoring of system metrics (CPU, memory, disk, network)
